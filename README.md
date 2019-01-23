@@ -1,5 +1,5 @@
 These are exercises from first year C programing course,
-Tasks descriptions are in each folder in TASK files.
+Tasks descriptions are in each folder in README files.
 
 All descriptions are written in Polish.
 

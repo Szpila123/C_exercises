@@ -1,4 +1,4 @@
-This is a project for first year C programming course.
+This is an unfinished (yet) project for first year C programming course.
 
 This is the task I was given:
 
