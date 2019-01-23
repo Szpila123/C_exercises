@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include "gtk_window.h"
+#include <string.h>
+
+//Getting entred text
+void SentenceEntered( GtkWidget *widget, void* data );
+
 
 int main( int argc, char *argv[] )
 {
@@ -20,4 +25,14 @@ int main( int argc, char *argv[] )
 	gtk_main();
 	
 	return 0;
+}
+
+void SentenceEntered( GtkWidget* widget, void *data)
+{
+	window_and_text *wnd_and_txt = data;
+	char stuff[100];
+	strcpy( stuff, gtk_entry_get_text( GTK_ENTRY( wnd_and_txt->text ) ) );
+	printf("%s\n", stuff );
+	Display_set_entry( wnd_and_txt->window );
+	return;
 }
