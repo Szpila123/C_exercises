@@ -17,7 +17,7 @@ int main( int argc, char *argv[] )
 	gtk_window_set_title( GTK_WINDOW( window ), "Logic analizer" );
 	gtk_window_set_position( GTK_WINDOW( window ), GTK_WIN_POS_CENTER );
 	g_signal_connect( G_OBJECT( window ), "destroy", G_CALLBACK( gtk_main_quit ), NULL );
-	gtk_container_set_border_width( GTK_CONTAINER( window ), 10 );
+	gtk_container_set_border_width( GTK_CONTAINER( window ), 30 );
 
 //Chain functions
 //Starting displaying
@@ -29,10 +29,8 @@ int main( int argc, char *argv[] )
 
 void SentenceEntered( GtkWidget* widget, void *data)
 {
-	window_and_text *wnd_and_txt = data;
 	char stuff[100];
-	strcpy( stuff, gtk_entry_get_text( GTK_ENTRY( wnd_and_txt->text ) ) );
+	strcpy( stuff, gtk_entry_get_text( GTK_ENTRY( ( GtkWidget* ) data ) ) );
 	printf("%s\n", stuff );
-	Display_set_entry( wnd_and_txt->window );
 	return;
 }
