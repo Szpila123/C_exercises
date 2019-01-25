@@ -1,20 +1,15 @@
 #include <gtk/gtk.h>
-#include <string.h>
+#include <stdio.h>
 #include "logic_analize.h"
 
-#define max_len 100
-
-//Function from module logic_analize
-extern void SentenceEntered( GtkWidget *widget, GtkWidget *text );
+//Quantity of operators 
+#define OPERQUAN 7
 
 //Shows errors in text enteries or input/output streams
 void Show_error( GtkWidget *window, char *info );
 
 //Displays sentance entry grid in window
 void Display_sentence_entry( GtkWidget *window );
-
-//Displays set entry grid in window
-void Display_set_entry( GtkWidget *window );
 
 //Adding text to input area
 static void Add_to_text( GtkWidget *widget, void *txt_and_in ); 
@@ -26,6 +21,8 @@ typedef struct{
 		char *input;
 	} text_and_input;
 
+//All operators
+char *oper[OPERQUAN] = { "~", "v", "&", "=>", "<=>", "E", "V" };
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////
 
@@ -53,7 +50,7 @@ void Display_sentence_entry( GtkWidget *window )
 
 	gtk_container_add(GTK_CONTAINER( window ), grid);
 
-//Creating TEXT ENTRY pole in grid
+//Creating TEXT ENTRY frame in grid
 	GtkWidget *text = gtk_entry_new();
 	gtk_entry_set_max_length( GTK_ENTRY( text ), max_len );
 	gtk_entry_set_alignment( GTK_ENTRY( text ), 0 );
@@ -61,19 +58,22 @@ void Display_sentence_entry( GtkWidget *window )
 	gtk_entry_set_text( GTK_ENTRY( text ), "" );
 	gtk_grid_attach( GTK_GRID( grid ), text, 0, 4, 7, 1 );
 
-//Creating SET ENTRY pole in grid
+//Creating SET ENTRY frame in grid
 	GtkWidget *set_entry = gtk_text_view_new();
 	gtk_text_view_set_input_purpose( GTK_TEXT_VIEW( set_entry ), GTK_INPUT_PURPOSE_ALPHA );
 	gtk_grid_attach( GTK_GRID( grid ), set_entry, 0, 0, 7, 3 );
 
 //Creating BUTTONS for special signs
+	//All operators are listed in logic_analize.c
 	struct spec_bttns{
 		char *sign, *exit;
 		int row, column, width, height;
-	} bttns[] = {{ "~","~", 3, 0, 1, 1 }, { "v","v", 3, 1, 1, 1 }, { "AND", "AND", 3, 2, 1, 1 },
-		 { "=>", "=>", 3, 3, 1, 1 }, { "<=>", "<=>", 3, 4, 1, 1 },
-		 { "E", "E", 3, 5, 1, 1 }, { "V", "V", 3, 6, 1, 1 }, { "DONE", "", 5, 2, 3, 1 }
-		 };
+	} bttns[OPERQUAN + 1];
+
+	for( int i = 0 ; i < OPERQUAN ; i++ )
+		bttns[i] = (struct spec_bttns) { oper[i], oper[i], 3, i, 1, 1 };
+	
+	bttns[OPERQUAN] = (struct spec_bttns) { "DONE", "", 5, 2, 3, 1 };
 
 //The array of structures to pass argumnets to g_signal_connect for buttons
 	text_and_input *txt_and_in = calloc(sizeof( bttns )/sizeof( bttns[0] ),
@@ -93,7 +93,13 @@ void Display_sentence_entry( GtkWidget *window )
 
 	int lst_bttn  = sizeof( bttns) / sizeof( bttns[0] ) - 1;
 	GtkWidget *button_done = gtk_button_new_with_label( bttns[lst_bttn].sign );
-	g_signal_connect(  button_done, "clicked", G_CALLBACK( SentenceEntered ), text );
+
+//If entering is done calling function from logic_analize.c
+	//Passing the arguments through structure from logic_analize.c
+	text_and_set *txt_and_set = malloc( sizeof( text_and_set ) );
+	*txt_and_set = (text_and_set) { .text = text, .set_entry = set_entry };
+
+	g_signal_connect(  button_done, "clicked", G_CALLBACK( SentenceEntered ), txt_and_set );
 	gtk_grid_attach( GTK_GRID( grid ), button_done, bttns[lst_bttn].column, bttns[lst_bttn].row, 
 		bttns[lst_bttn].width, bttns[lst_bttn].height );
 	
