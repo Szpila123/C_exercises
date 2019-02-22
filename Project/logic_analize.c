@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <gtk/gtk.h>
+#include "lists.h"
 
 #define max_len 100
 
@@ -10,29 +11,6 @@ typedef struct{
 		GtkWidget *text;
 		GtkWidget *set_entry;
 	} text_and_set;
-
-
-//Structure containing relations
-
-	//List containing relation elements
-typedef struct list_node{
-		int a,b;
-		struct list_node *next;
-	} lnode;
-
-	//Head of list containing name of relation and pointer to elements
-typedef struct list_head{
-		char name;
-		lnode* elem;
-	} lhead;
-
-	//Structure containing set power and all relations
-typedef struct{
-		unsigned int power;
-		unsigned int num_of_rels;
-		lhead *rel;
-	} relations; 
-
 
 //////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////
@@ -49,11 +27,18 @@ static relations *RelationsInfo( GtkWidget *widget );
 //Counting newlines in text till the nth character
 static int CountNewlines( char *text, int pos );
 
-//Adds new element to the relations elements list
-static int AddRelationElem( lnode *Rel, int a, int b );
+//Analyzes the formula and if needed constructs a counterexample
+static void Analyze( GtkWidget *window, char* formula, relations *rels );
 
-//Frees the memory of relation list
-static void FreeRelationMemory( lnode *Rel );
+//Checks if formula is correct
+static int Check_formula( GtkWidget *window, char* formula, relations *rels );
+
+//Converts the number from string to int and checks if its nonzero and no more than max, if it is calls Show_error on window
+static bool Convert_num_and_check( char* text, int start, int max, GtkWidget *window );
+
+//Check if the character is a digit, big letter or small letter (if its a letter that is an operator returns false)
+static int IsDigitOrNum( char c );
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -71,20 +56,22 @@ void SentenceEntered( GtkWidget *widget, void *data )
 	relations *rels = RelationsInfo( txt_and_set->set_entry );
 	if( rels == NULL ) return;
 
-	printf( "%d\n", rels->power );
-
-
-	for( int i = 0 ; i < rels->num_of_rels ; i ++ ){
-		printf( "%c\n", rels->rel[i].name );
-		FreeRelationMemory( rels->rel[i].elem );
+//Checking if formula is correct:
+	if( Check_formula( gtk_widget_get_toplevel( widget ), formula, rels ) ){
+		FreeRelationsSpace( rels );
+		return;
 	}
-	free( rels->rel );
-	free( rels );
+
+//Analizing formula
+	Analyze( gtk_widget_get_toplevel( widget ), formula,  rels );
+	
+
+//Cleaning memory
+	FreeRelationsSpace( rels );
 	return;
 }
 	
 
-			
 static relations* RelationsInfo( GtkWidget *set_entry )
 {
 	
@@ -213,6 +200,12 @@ static relations* RelationsInfo( GtkWidget *set_entry )
 	for( ;  set[pos] != '\0' && set[pos] != '\n' ; pos ++ ){
 			rels->power *= 10; 
 			rels->power += set[pos] - '0';
+			if( rels->power > 1000 ){
+				Show_error( gtk_widget_get_toplevel( set_entry ), "Power of the set is too big" );
+				free(set);
+				free(rels);
+				return NULL;
+			}
 	}
 
 //Counting all relations ( counting big letters in set )
@@ -228,6 +221,7 @@ static relations* RelationsInfo( GtkWidget *set_entry )
 		free(rels);
 		return NULL;
 	}
+	for( int i = 0 ; i < rels->num_of_rels ; i++ ) rels->rel[i].elem = NULL;
 
 //Adding all relations names to array and relations elements to lists
 	int num_of_add_rels = 0;
@@ -241,11 +235,8 @@ static relations* RelationsInfo( GtkWidget *set_entry )
 					snprintf( error, 100, "Line %d: Second relation with the same name- %c"
 						, CountNewlines( set, pos ), set[pos]  );
 					Show_error( gtk_widget_get_toplevel( set_entry ), error );
-					for( int j = 0 ; j < num_of_add_rels ; j++ )
-						FreeRelationMemory( rels->rel[j].elem );	
 					free(set);
-					free(rels->rel);
-					free(rels);
+					FreeRelationsSpace( rels );
 					return NULL;	
 				}
 			//Adding name of the relation and all its elements	
@@ -261,37 +252,47 @@ static relations* RelationsInfo( GtkWidget *set_entry )
 						a *= 10;
 						a += set[pos] - '0';
 						pos++;
+						//Checking if a isnt too big
+						if( a > rels->power ){
+							snprintf( error, 100, "Line %d: First element is bigger than a set power"
+								, CountNewlines( set, pos ) );
+							Show_error( gtk_widget_get_toplevel( set_entry ), 
+								error);
+							free(set);
+							FreeRelationsSpace( rels );
+							return NULL;
+						}
 					}
 					pos++;
 					while( set[pos] >= '0' && set[pos] <= '9' ){
 						b *= 10;
 						b += set[pos] - '0';
 						pos++;
-					}
-					//Checking if numbers arent bigger than set power
-					if( a > rels->power || b > rels->power || a == 0 || b == 0 ){
-						if( a == 0 || b == 0 )
-							snprintf( error, 100, "Line %d: Element cant be a 0", CountNewlines( set, pos ) );	
-						else
-							snprintf( error, 100, "Line %d: Element is bigger than a set power"
+						//Checking if b isnt too big
+						if( b > rels->power ){
+							snprintf( error, 100, "Line %d: Second element is bigger than a set power"
 								, CountNewlines( set, pos ) );
+							Show_error( gtk_widget_get_toplevel( set_entry ), 
+								error);
+							free(set);
+							FreeRelationsSpace( rels );
+							return NULL;
+						}
+					}
+					//Checking if numbers arent zeros 
+					if(  a == 0 || b == 0 ){
+						snprintf( error, 100, "Line %d: Element cant be a 0", CountNewlines( set, pos ) );	
 						Show_error( gtk_widget_get_toplevel( set_entry ), 
 							error);
-						for( int j = 0 ; j < num_of_add_rels ; j++ )
-							FreeRelationMemory( rels->rel[j].elem );
 						free(set);
-						free(rels->rel);
-						free(rels);
+						FreeRelationsSpace( rels );
 						return NULL;	
 					}	
-					if( AddRelationElem( rels->rel[num_of_add_rels].elem, a, b )){
+					if( AddElem( &(rels->rel[num_of_add_rels].elem), a, b )){
 						Show_error( gtk_widget_get_toplevel( set_entry ), 
 							"Error occured during memory reservation" );
-						for( int j = 0 ; j < num_of_add_rels ; j++ )
-							FreeRelationMemory( rels->rel[j].elem );
 						free(set);
-						free(rels->rel);
-						free(rels);
+						FreeRelationsSpace( rels );
 						return NULL;	
 					}
 				}
@@ -313,23 +314,422 @@ static int CountNewlines( char* text, int pos )
 	return newlines + 1 ;
 }
 
-static int AddRelationElem( lnode *Rel, int a, int b )
+
+static int Check_formula( GtkWidget *window, char* formula, relations *rels )
 {
-	while( Rel != NULL )	Rel = Rel->next;
-	Rel = malloc( sizeof( lnode ) );
-	if( Rel == NULL ) return 1;
-	Rel->a = a;
-	Rel->b = b;
+	int pos = 0;
+	lnode* variables = NULL;
+	lnode* parenthesis = NULL;
+	char error[100];
+
+	//Skipping to the first character
+	while( formula[pos] == ' ' ) pos++;
+
+	//Checking if formula is empty
+	if( formula[pos] == '\0' ){
+		Show_error( window, "Formula is empty" );	
+		return 1;
+	}
+	
+	//Checking syntax
+	for( int pos = 0 ; formula[pos] != '\0' ; pos ++ ){
+	//Checking quantifiers and adding tied variables
+		if( formula[pos] == 'E' || formula[pos] == 'V' ){
+			if( formula[pos+1] < 'a' || formula[pos+1] > 'z' || formula[pos+1] == 'v' ){
+				snprintf( error, 100, "Formula chracter %d: Expected variable", pos+2);
+				Show_error( window, error );	
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+			pos++;
+			if( CheckListElem( variables, (int) formula[pos], 0 ) ){
+				snprintf( error, 100, "Formula character %d: Second variable with the same name %c ", pos+1, formula[pos] );
+				Show_error( window, error );
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+
+			if( AddElem( &variables, (int) formula[pos], 0 ) ){
+				Show_error( window, "Error occured during memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+		}
+
+	//Checking brackets placement
+		else if( formula[pos] == '(' ){
+			int brackets = 1, temp = pos;
+			bool empty = true;
+			//Looking for closing bracket
+			while( brackets  && formula[temp] != '\0' ){
+				temp++;
+				if( formula[temp] == '(' ) brackets++;
+				else if( formula[temp] == ')' ) brackets--;
+				else if( formula[temp] >= 'A' && formula[temp] <= 'Z' && formula[temp] != 'E' && formula[temp] != 'V' ) empty = false;
+			}
+			//Checking if bracket was found and if its non empty
+			if( brackets || empty ){
+				if( brackets ) snprintf( error, 100, "Formula: Bracket on position %d isnt closed", pos+1 );
+				else snprintf( error, 100, "Formula: Brackets on positions %d to %d dont contain any relations", pos+1, temp+1 );
+				Show_error( window, error );
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+			if( AddElem( &parenthesis, temp, 0 ) ){
+				Show_error( window, "Error occured during memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+
+		}
+		//Checking if closing bracket has its opening
+		else if( formula[pos] == ')' ){
+			if( !CheckListElem( parenthesis, pos, 0 ) ){
+				snprintf( error, 100, "Formula: Bracket on position %d dosnt have opening bracket", pos+1 );
+				Show_error( window, error );
+				FreeMemory( variables );
+				FreeMemory( parenthesis );
+				return 1;
+			}
+		}
+
+
+		//When the next character is a number or variable it has to be attached to relation (sth like xRx / 123R1)
+		else if( formula[pos] >= '0' && formula[pos] <= '9' || formula[pos] >= 'a' && formula[pos] <= 'z' && formula[pos] != 'v' ){
+			//Checking if its a number and if its correct
+			if( formula[pos] >= '0' && formula[pos] <= '9' ){
+				if( Convert_num_and_check( formula, pos, rels->power, window  ) ){
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+				while( formula[pos] >= '0' && formula[pos] <= '9' ) pos++;
+			}
+			//If its not a number it has to be a variable, checking if it was declared
+			else{
+				if( !CheckListElem( variables, (int) formula[pos], 0 ) ){
+					snprintf( error, 100, "Formula: variable on position %d isnt declared", pos+1);
+					Show_error( window, error );
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+				pos++;
+			}
+			//Next there should be a relations name
+			if( formula[pos] < 'A' || formula[pos] > 'Z' || formula[pos] == 'E' || formula[pos] == 'V' ){
+				snprintf( error, 100, "Formula: expected relation name on position %d", pos+1);
+				Show_error( window, error );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+			//Checking if the relation was declared
+			else{
+				bool found = false;
+				for( int i = 0 ; i < rels->num_of_rels ; i++ )
+					if( rels->rel[i].name == formula[pos] ){
+						found = true;
+						break;
+					}	
+				if( !found ){
+					snprintf( error, 100, "Formula: on position %d relations name wasnt declared", pos+1 );
+					Show_error( window, error );
+					FreeMemory( variables );
+					FreeMemory( parenthesis );
+					return 1;
+					}
+			}
+			pos++;
+			//The second variable or number goes same as before...
+			if( formula[pos] >= '0' && formula[pos] <= '9' ){
+				if( Convert_num_and_check( formula, pos, rels->power, window  ) ){
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+				while( formula[pos+1] >= '0' && formula[pos+1] <= '9' ) pos++;
+			}
+			else{
+				if( !CheckListElem( variables, (int) formula[pos], 0 ) ){
+					if( formula[pos] > 'z' || formula[pos] < 'a' || formula[pos] == 'v')
+						snprintf( error, 100, "Formula: expected variable or number on position %d", pos+1);
+					else snprintf( error, 100, "Formula: variable on position %d isnt declared", pos+1);
+					Show_error( window, error );
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+			}
+		}
+		// The negation should be placed before relation element or opening bracket
+		else if( formula[pos] == '~' ){
+			while( formula[pos] == ' ' ) pos++;
+			if( formula[pos] == '(' ) pos --;
+			else if( formula[pos] >= 'a' && formula[pos] <= 'z' || formula[pos] >= '0' && formula[pos] <= '9' ) pos--;
+			else{
+				snprintf( error, 100, "Formula: on position %d expected bracket or relation after negations sign", pos+1);
+				Show_error( window, error );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+		}
+		// All other logical symbols have two arguments (placed before and after the symbol): relation elem or formula in brackets
+		else if( formula[pos] == '<' || formula [pos] == '=' || formula[pos] == '&' || formula[pos] == 'v' ){
+			int beg = pos-1;
+			int end = pos + 1;
+			if( formula[pos] == '<' ){
+				if( formula[pos+1] != '=' || formula[pos+2] != '>' ){
+					snprintf( error, 100, "Formula: on position %d unrecognized character", pos+1 );
+					Show_error( window, error );
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+				end = pos + 3;
+				pos+=2;
+			}
+			else if( formula[pos] == '=' ){
+				if( formula[pos+1] != '>' ){
+					snprintf( error, 100, "Formula: on position %d unrecognized character", pos+1 );
+					Show_error( window, error );
+					FreeMemory( parenthesis );
+					FreeMemory( variables );
+					return 1;
+				}
+				end = pos + 2;
+				pos+=1;
+			}
+			//Checking what is placed before the operator
+			while( formula[beg] == ' ' && beg > 0 ) beg--;
+			if( beg == 0 ){
+				Show_error( window, "Formula starts with an oparator" );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+			if( ( formula[beg] != ')' && (formula[beg] < '0' || formula[beg] > '9') && (formula[beg] < 'a' || formula[beg] > 'z') )
+			   || formula[beg] == 'v' ){
+				snprintf( error, 100, "Formula: on position %d operators letf argument is wrong", pos+1);
+				Show_error( window, error );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+			if( formula[beg] >= 'a' && formula[beg] <= 'z' && (formula[beg-1] == 'E' || formula[beg-1] == 'V' ) ){
+				snprintf( error, 100, "Formula: on position %d declaration as operators left argument", pos+1 );
+				Show_error( window, error );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+			//Checking what is placed after the operator
+			while( formula[end] == ' ' ) end ++;
+			if( formula[end] == '\0' ){
+				Show_error( window, "Formula: expected second argument for the last operator" );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+			if( (formula[end] != '~' &&  formula[end] != '(' && (formula[end] < '0' || formula[end] > '9') && (formula[end] < 'a' || formula[end] > 'z') )
+		 	   || formula[end] == 'v' ){
+				snprintf( error, 100, "Formula: on position %d operators right argument is wrong", pos+1);
+				Show_error( window, error );
+				FreeMemory( parenthesis );
+				FreeMemory( variables );
+				return 1;
+			}
+		}
+		else if( formula[pos] != ' ' ){
+			snprintf( error, 100, "Formula: unrecognized character entered on position %d", pos+1 );
+			Show_error( window, error );
+			FreeMemory( parenthesis );
+			FreeMemory( variables );
+			return 1;
+		}
+	}
+	FreeMemory( parenthesis );
+	FreeMemory( variables );
 	return 0;
 }
 
-static void FreeRelationMemory( lnode *Rel )
+static bool Convert_num_and_check( char* text, int start, int max, GtkWidget *window )
 {
-	lnode *temp = Rel;
-	while( Rel != NULL ){
-		while( temp->next != NULL ) temp = temp->next;
-		free(temp);
-		temp = Rel;
+	int num = 0;	
+	int pos = start;
+	while( text[pos] >= '0' && text[pos] <= '9' ){
+		num *= 10;
+		num += text[pos] - '0';
+		if( num > max ){
+			char error[100];
+			snprintf( error, 100, "Formula: number on positon %d is bigger than set's power", start+1 );
+			Show_error( window, error );
+			return true;
+		}
+		pos++;
 	}
+	if( num == 0 ){
+		char error[100];
+		snprintf( error, 100, "Formula: number on positon %d is zero", start+1 );
+		Show_error( window, error );
+		return true;
+	}
+	return false;
+}
+		
+//Funkcja przechodząc na odwrotną notację polską traci lokalne deklaracje np. Vx(Ey xRy) => ~(Ez zRx) jest błędnie interpretowana...
+//Formulę należy przełożyć na NNF
+static void Analyze( GtkWidget *window, char* formula, relations *rels )
+{
+	lnode *variables, *stack;
+	variables = NULL;
+	stack = NULL;
+	int Rev_not[100];
+	char result[100], name;
+	int pos = 0, temp = 0;
+
+	for( int i = 0 ; formula[i] != '\0' ; i++ )
+		if( formula[i] == 'V' || formula[i] == 'E' )
+			if( AddElem( &variables, formula[i+1], formula[i] == 'V' ? 1 : 0 ) ){
+				FreeMemory( variables );
+				Show_error( window, "Problem occured during memory reservation" );
+				return;
+			}
+
+	//Rewriting formula to reverse notation
+	for( int i = 0 ; formula[i] != '\0' ; i++ ){
+		if( formula[i] == 'E' || formula[i] == 'V' ) i++;
+		else if( IsDigitOrNum( formula[i] ) ){
+			if( IsDigitOrNum( formula[i] ) == 1 )	Rev_not[pos++] = formula[i++];
+			else if( IsDigitOrNum( formula[i] ) == 3 ){ 
+				temp = 0;
+				while( IsDigitOrNum( formula[i] ) == 3 ){
+					temp *= 10;
+					temp += formula[i] - '0';
+					i++;
+				}
+				Rev_not[pos++] = temp + 1000;
+			}
+			name = formula[i++];
+			if( IsDigitOrNum( formula[i] ) == 1 ) Rev_not[pos++] = formula[i];
+			else{
+				temp = 0;
+				while( IsDigitOrNum( formula[i] ) == 3 ){
+					temp *= 10;
+					temp += formula[i] - '0';
+					i++;
+				}
+				Rev_not[pos++] = temp + 1000;
+				i--;
+			}
+			Rev_not[pos++] = name;
+		}
+		else if( formula[i] == '(' ){
+			if( PushElem( &stack, '(', 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+		}
+		else if( formula[i] == '<' ){
+			while( stack != NULL && stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			if( PushElem( &stack, 1, 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+			i+=2;
+		}
+		else if( formula[i] == '=' ){
+			while( stack != NULL && stack->a >= 2 && stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			if( PushElem( &stack, 2, 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+			i++;
+		}
+		else if( formula[i] == 'V' ){
+			while( stack != NULL && stack->a >= 3 && stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			if( PushElem( &stack, 3, 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+		}
+		else if( formula[i] == '&' ){
+			while( stack != NULL && stack->a >= 4 && stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			if( PushElem( &stack, 4, 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+		}
+		else if( formula[i] == '~' ){
+			while( stack != NULL && stack->a >= 5 && stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			if( PushElem( &stack, 5, 0 ) ){
+				Show_error( window, "Problem occured with memory reservation" );
+				FreeMemory( variables );
+				FreeMemory( stack );
+				return;
+			}
+		}
+		else if( formula[i] == ')' ){
+			while( stack->a != '(' ){
+				Rev_not[pos++] = stack->a;
+				RemoveFirst( &stack );
+			}
+			RemoveFirst( &stack );
+		}
+		else i++;
+	}
+	//Finishing first notation (emptying the stack)
+	while( stack != NULL ){
+		Rev_not[pos++] = stack->a;
+		RemoveFirst( &stack );
+	}
+	Rev_not[pos] = 0;
+		
+	//Checking if formula is true or false
 	return;
+}				
+			
+static int IsDigitOrNum( char c )
+{
+	if( c >= 'a' && c <= 'z' ){
+		if( c == 'v' ) return 0;
+		else return 1;
+	}
+	if( c >= 'A' && c <= 'Z' ){
+		if( c == 'E' || c == 'V' ) return 0;
+		else return 2;
+	}
+	if( c >= '0' && c <= '9' ) return 3;
+	return 0;
 }

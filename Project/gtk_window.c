@@ -80,7 +80,7 @@ void Display_sentence_entry( GtkWidget *window )
 		sizeof(text_and_input)) ;
 
 //Adding each button to window
-	for( int i = 0 ; i < sizeof( bttns )/ sizeof( bttns[0] ) - 1 ; i++ )
+	for( unsigned int i = 0 ; i < sizeof( bttns )/ sizeof( bttns[0] ) - 1 ; i++ )
 	{
 		txt_and_in[i].text = text;
 		txt_and_in[i].input = bttns[i].exit;
